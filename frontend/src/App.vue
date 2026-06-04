@@ -39,8 +39,6 @@ type ParagraphSegment =
 
 type TranslationCache = Record<string, string>
 
-const neighboringTranslationGap = 3
-
 const documents = ref<DocumentSummary[]>([])
 const activeDocument = ref<DocumentRecord | null>(null)
 const viewMode = ref<ViewMode>('library')
@@ -127,18 +125,7 @@ const currentPageTranslationGroups = computed(() => {
       return [] as TranslationGroup[]
     }
 
-    const groupedRanges: SelectionRange[] = []
-    for (const range of visibleRanges) {
-      const previous = groupedRanges[groupedRanges.length - 1]
-      if (previous && range.start <= previous.end + neighboringTranslationGap + 1) {
-        previous.end = Math.max(previous.end, range.end)
-        continue
-      }
-
-      groupedRanges.push({ ...range })
-    }
-
-    return groupedRanges
+    return visibleRanges
       .map((range) => ({
         ...range,
         paragraphIndex,
