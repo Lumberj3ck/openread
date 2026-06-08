@@ -64,6 +64,79 @@ type ParagraphSegment =
 
 type TranslationCache = Record<string, string>
 
+type ReaderFontOption = {
+  id: string
+  label: string
+  family: string
+}
+
+type HighlightOption = {
+  id: string
+  label: string
+  background: string
+  border: string
+  removableBackground: string
+  removableBorder: string
+}
+
+const readerFontOptions: ReaderFontOption[] = [
+  {
+    id: 'lyric',
+    label: 'Lyric Serif',
+    family: 'Georgia, "Times New Roman", serif',
+  },
+  {
+    id: 'bookish',
+    label: 'Bookish',
+    family: '"Palatino Linotype", "Book Antiqua", Palatino, serif',
+  },
+  {
+    id: 'classic',
+    label: 'Classic Baskerville',
+    family: 'Baskerville, "Baskerville Old Face", Garamond, serif',
+  },
+  {
+    id: 'modern',
+    label: 'Editorial Sans',
+    family: '"Avenir Next", "Segoe UI", sans-serif',
+  },
+]
+
+const highlightOptions: HighlightOption[] = [
+  {
+    id: 'amber',
+    label: 'Amber',
+    background: 'rgba(212, 150, 35, 0.26)',
+    border: 'rgba(184, 120, 18, 0.16)',
+    removableBackground: 'rgba(186, 64, 48, 0.24)',
+    removableBorder: 'rgba(186, 64, 48, 0.28)',
+  },
+  {
+    id: 'sage',
+    label: 'Sage',
+    background: 'rgba(124, 151, 106, 0.24)',
+    border: 'rgba(91, 119, 76, 0.2)',
+    removableBackground: 'rgba(161, 92, 73, 0.22)',
+    removableBorder: 'rgba(147, 81, 64, 0.26)',
+  },
+  {
+    id: 'rosewood',
+    label: 'Rosewood',
+    background: 'rgba(155, 92, 88, 0.22)',
+    border: 'rgba(135, 73, 70, 0.2)',
+    removableBackground: 'rgba(113, 54, 50, 0.28)',
+    removableBorder: 'rgba(97, 45, 42, 0.3)',
+  },
+  {
+    id: 'ink',
+    label: 'Ink Mist',
+    background: 'rgba(91, 110, 138, 0.2)',
+    border: 'rgba(71, 88, 114, 0.22)',
+    removableBackground: 'rgba(130, 83, 64, 0.22)',
+    removableBorder: 'rgba(114, 71, 54, 0.28)',
+  },
+]
+
 const documents = ref<DocumentSummary[]>([])
 const activeDocument = ref<DocumentRecord | null>(null)
 const viewMode = ref<ViewMode>('library')
@@ -78,6 +151,9 @@ const hoveredWordIndex = ref<number | null>(null)
 const selectionStartIndex = ref<number | null>(null)
 const selectionEndIndex = ref<number | null>(null)
 const isSelecting = ref(false)
+const readerSidebarOpen = ref(false)
+const readerFontID = ref(readerFontOptions[0].id)
+const readerHighlightID = ref(highlightOptions[0].id)
 const readerRef = ref<HTMLElement | null>(null)
 const translations = ref<TranslationItem[]>([])
 const translationError = ref('')
@@ -134,6 +210,15 @@ const currentPage = computed(() => readerPages.value[currentPageIndex.value] ?? 
 
 const totalPages = computed(() => readerPages.value.length)
 const translationMap = computed(() => new Map(translations.value.map((item) => [item.key, item.translation])))
+const activeReaderFont = computed(() => readerFontOptions.find((option) => option.id === readerFontID.value) ?? readerFontOptions[0])
+const activeHighlightOption = computed(() => highlightOptions.find((option) => option.id === readerHighlightID.value) ?? highlightOptions[0])
+const readerThemeStyle = computed(() => ({
+  '--reader-font-family': activeReaderFont.value.family,
+  '--reader-highlight-bg': activeHighlightOption.value.background,
+  '--reader-highlight-border': activeHighlightOption.value.border,
+  '--reader-highlight-removable-bg': activeHighlightOption.value.removableBackground,
+  '--reader-highlight-removable-border': activeHighlightOption.value.removableBorder,
+}))
 
 const wordLookup = computed(() => {
   const entries = parsedParagraphs.value
@@ -196,6 +281,14 @@ onBeforeUnmount(() => {
 watch(currentPageTranslationGroups, async (groups) => {
   await syncTranslations(groups)
 }, { deep: true })
+
+watch([readerSidebarOpen, readerFontID], async () => {
+  if (viewMode.value !== 'reader' || !activeDocument.value) {
+    return
+  }
+
+  await paginateReader()
+})
 
 async function loadDocuments() {
   loading.value = true
@@ -967,31 +1060,22 @@ function sliceParagraphParts(parts: ReaderPart[], start: number, end: number) {
     </section>
   </main>
 
-  <main v-else class="reader-view">
-    <section class="reader-surface">
-      <article ref="readerRef" class="reader" @dragstart.prevent>
-        <p v-for="(segments, paragraphIndex) in currentPageSegments" :key="paragraphIndex" class="reader-paragraph">
-          <template v-for="segment in segments" :key="segment.key">
-            <template v-if="segment.type === 'plain'">
-              <template v-for="(part, partIndex) in segment.parts" :key="part.kind === 'word' ? `${part.index}:${part.start}:${part.end}` : `${segment.key}-${part.start}-${part.end}-${partIndex}`">
-                <span
-                  v-if="part.kind === 'word'"
-                  class="word"
-                  :class="{
-                    selected: isWordSelected(part.index),
-                    removable: isWordRemovable(part.index),
-                  }"
-                  @mousedown="handleWordMouseDown(part.index, $event)"
-                  @mouseenter="handleWordMouseEnter(part.index)"
-                  @mouseleave="handleWordMouseLeave(part.index)"
-                >
-                  {{ part.text }}
-                </span>
-                <span v-else class="space">{{ part.text }}</span>
-              </template>
-            </template>
-            <span v-else :key="`${segment.key}:${segment.translation}`" class="translation-group">
-              <span class="translation-base">
+  <main v-else class="reader-view" :style="readerThemeStyle">
+    <section class="reader-body" :class="{ 'reader-body-sidebar-open': readerSidebarOpen }">
+      <section class="reader-surface">
+        <button
+          class="reader-sidebar-toggle"
+          :aria-expanded="readerSidebarOpen"
+          :title="readerSidebarOpen ? 'Close styling panel' : 'Open styling panel'"
+          @click="readerSidebarOpen = !readerSidebarOpen"
+        >
+          <span>{{ readerSidebarOpen ? 'Hide styling' : 'Style reader' }}</span>
+        </button>
+
+        <article ref="readerRef" class="reader" @dragstart.prevent>
+          <p v-for="(segments, paragraphIndex) in currentPageSegments" :key="paragraphIndex" class="reader-paragraph">
+            <template v-for="segment in segments" :key="segment.key">
+              <template v-if="segment.type === 'plain'">
                 <template v-for="(part, partIndex) in segment.parts" :key="part.kind === 'word' ? `${part.index}:${part.start}:${part.end}` : `${segment.key}-${part.start}-${part.end}-${partIndex}`">
                   <span
                     v-if="part.kind === 'word'"
@@ -1008,18 +1092,88 @@ function sliceParagraphParts(parts: ReaderPart[], start: number, end: number) {
                   </span>
                   <span v-else class="space">{{ part.text }}</span>
                 </template>
+              </template>
+              <span v-else :key="`${segment.key}:${segment.translation}`" class="translation-group">
+                <span class="translation-base">
+                  <template v-for="(part, partIndex) in segment.parts" :key="part.kind === 'word' ? `${part.index}:${part.start}:${part.end}` : `${segment.key}-${part.start}-${part.end}-${partIndex}`">
+                    <span
+                      v-if="part.kind === 'word'"
+                      class="word"
+                      :class="{
+                        selected: isWordSelected(part.index),
+                        removable: isWordRemovable(part.index),
+                      }"
+                      @mousedown="handleWordMouseDown(part.index, $event)"
+                      @mouseenter="handleWordMouseEnter(part.index)"
+                      @mouseleave="handleWordMouseLeave(part.index)"
+                    >
+                      {{ part.text }}
+                    </span>
+                    <span v-else class="space">{{ part.text }}</span>
+                  </template>
+                </span>
+                <span
+                  v-if="segment.translation"
+                  class="translation-inline"
+                  :class="{ 'translation-inline-single': isSingleTranslationToken(segment.translation) }"
+                >
+                  <span v-for="(token, tokenIndex) in splitTranslationTokens(segment.translation)" :key="`${segment.key}-token-${tokenIndex}`" class="translation-token">{{ token }}</span>
+                </span>
               </span>
-              <span
-                v-if="segment.translation"
-                class="translation-inline"
-                :class="{ 'translation-inline-single': isSingleTranslationToken(segment.translation) }"
+            </template>
+          </p>
+        </article>
+      </section>
+
+      <aside class="reader-sidebar" :class="{ 'reader-sidebar-open': readerSidebarOpen }" aria-label="Reader styling options">
+        <div class="reader-sidebar-panel">
+          <div class="reader-sidebar-header">
+            <p class="reader-sidebar-kicker">Reading room</p>
+            <h2>Shape the page.</h2>
+            <p>Adjust the type voice and the tint of selected text without leaving the reader.</p>
+          </div>
+
+          <section class="reader-control-group">
+            <div class="reader-control-label-row">
+              <strong>Fonts</strong>
+              <span>{{ activeReaderFont.label }}</span>
+            </div>
+            <div class="reader-option-list">
+              <button
+                v-for="option in readerFontOptions"
+                :key="option.id"
+                class="reader-option-card reader-font-card"
+                :class="{ 'reader-option-card-active': readerFontID === option.id }"
+                :style="{ fontFamily: option.family }"
+                @click="readerFontID = option.id"
               >
-                <span v-for="(token, tokenIndex) in splitTranslationTokens(segment.translation)" :key="`${segment.key}-token-${tokenIndex}`" class="translation-token">{{ token }}</span>
-              </span>
-            </span>
-          </template>
-        </p>
-      </article>
+                <strong>{{ option.label }}</strong>
+                <span>The reader should feel like a different edition.</span>
+              </button>
+            </div>
+          </section>
+
+          <section class="reader-control-group">
+            <div class="reader-control-label-row">
+              <strong>Highlights</strong>
+              <span>{{ activeHighlightOption.label }}</span>
+            </div>
+            <div class="reader-swatch-list">
+              <button
+                v-for="option in highlightOptions"
+                :key="option.id"
+                class="reader-swatch"
+                :class="{ 'reader-swatch-active': readerHighlightID === option.id }"
+                :title="option.label"
+                @click="readerHighlightID = option.id"
+              >
+                <span class="reader-swatch-chip" :style="{ background: option.background, boxShadow: `inset 0 0 0 1px ${option.border}` }"></span>
+                <span>{{ option.label }}</span>
+              </button>
+            </div>
+          </section>
+        </div>
+      </aside>
     </section>
 
     <footer class="reader-footer">
