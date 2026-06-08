@@ -1,10 +1,8 @@
 :root {
-  color-scheme: dark;
+  color-scheme: light;
   font-family: Georgia, "Times New Roman", serif;
-  background:
-    radial-gradient(circle at top left, rgba(218, 176, 92, 0.12), transparent 30%),
-    linear-gradient(135deg, #0d0c0b, #15110f 52%, #0b0a09);
-  color: #f3ebdf;
+  background: #f3efe8;
+  color: #201c18;
 }
 
 * {
@@ -15,7 +13,7 @@ body {
   margin: 0;
   height: 100vh;
   overflow: hidden;
-  background: transparent;
+  background: #f3efe8;
 }
 
 button,
@@ -34,24 +32,34 @@ button {
 .library-view {
   height: 100vh;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  padding: 2rem;
-  overflow: hidden;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 2rem;
+  padding: 3rem;
+  overflow: auto;
+}
+
+.library-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(20rem, 28rem);
+  gap: 2rem;
+  align-items: start;
 }
 
 .upload-stage {
-  max-width: 760px;
-  width: 100%;
-  margin: auto;
-  text-align: center;
+  max-width: 40rem;
+}
+
+.library-panel {
+  display: grid;
+  gap: 0.9rem;
 }
 
 .eyebrow,
 .strip-label {
   margin: 0 0 0.75rem;
-  color: #d6b06b;
+  color: #6e655b;
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.16em;
   font-size: 0.72rem;
 }
 
@@ -61,37 +69,46 @@ p {
 }
 
 h1 {
-  font-size: clamp(2.8rem, 7vw, 5.6rem);
-  line-height: 0.94;
-  margin-bottom: 1rem;
+  max-width: 10ch;
+  font-size: clamp(2.8rem, 5.5vw, 4.8rem);
+  line-height: 0.98;
+  margin-bottom: 1.1rem;
 }
 
 .lede,
 .muted,
 .document-card span,
 .page-indicator {
-  color: rgba(243, 235, 223, 0.72);
+  color: #6b6258;
 }
 
 .upload-card {
-  position: relative;
   display: grid;
-  place-items: center;
-  min-height: 220px;
-  margin-top: 2rem;
-  border: 1px dashed rgba(214, 176, 107, 0.52);
-  border-radius: 32px;
-  background: linear-gradient(180deg, rgba(214, 176, 107, 0.12), rgba(255, 255, 255, 0.02));
+  gap: 0.45rem;
+  position: relative;
+  min-height: 12.5rem;
+  padding: 1.5rem;
+  border: 1px solid #d8d0c6;
+  border-radius: 20px;
+  background: #fbf8f2;
   cursor: pointer;
   overflow: hidden;
 }
 
 .upload-card:hover {
-  border-color: rgba(214, 176, 107, 0.84);
+  border-color: #c5bbaf;
+  background: #f8f4ed;
 }
 
-.upload-card span {
+.upload-card-title {
   font-size: 1.2rem;
+  color: #201c18;
+}
+
+.upload-card-copy,
+.upload-note {
+  color: #6b6258;
+  line-height: 1.5;
 }
 
 .upload-card input {
@@ -102,35 +119,60 @@ h1 {
 }
 
 .error {
-  margin-top: 1rem;
-  color: #ff9f94;
+  margin: 0;
+  color: #a34339;
 }
 
 .library-strip {
-  padding-top: 1.5rem;
-  overflow: auto;
+  display: grid;
+  gap: 1rem;
+  min-height: 0;
+}
+
+.library-strip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+}
+
+.collection-meta,
+.upload-note {
+  margin: 0;
 }
 
 .document-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.9rem;
 }
 
 .document-card {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  padding: 1rem 1.1rem;
-  border-radius: 20px;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 1.15rem 1.2rem;
+  border: 1px solid #ddd4ca;
+  border-radius: 16px;
   text-align: left;
   color: inherit;
-  background: rgba(255, 255, 255, 0.05);
+  background: #fcfaf6;
   cursor: pointer;
 }
 
 .document-card:hover {
-  background: rgba(214, 176, 107, 0.12);
+  background: #f6f1ea;
+  border-color: #c9bfb4;
+}
+
+.document-card strong {
+  font-size: 1.02rem;
+}
+
+.document-card-copy {
+  margin-top: 0.3rem;
+  color: #3d3832;
 }
 
 .reader-view {
@@ -493,11 +535,22 @@ h1 {
 
 @media (max-width: 900px) {
   .library-view {
+    gap: 1.5rem;
     padding: 1.25rem;
   }
 
+  .library-shell {
+    grid-template-columns: 1fr;
+  }
+
   .upload-card {
-    min-height: 180px;
+    min-height: 10rem;
+  }
+
+  .library-strip-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
   }
 
   .reader-body-sidebar-open {

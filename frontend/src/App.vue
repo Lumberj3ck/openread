@@ -1119,23 +1119,35 @@ function sliceParagraphParts(parts: ReaderPart[], start: number, end: number) {
 
 <template>
   <main v-if="viewMode === 'library'" class="library-view">
-    <section class="upload-stage">
-      <p class="eyebrow">OpenRead</p>
-      <h1>Upload a document and start reading.</h1>
-      <p class="lede">Text and markdown only for now. The reader opens in a dedicated full-page view.</p>
+    <div class="library-shell">
+      <section class="upload-stage">
+        <p class="eyebrow">OpenRead</p>
+        <h1>A quiet place to read your own texts.</h1>
+        <p class="lede">Upload a plain text or markdown file, open it in the reader, and translate passages as you go.</p>
+      </section>
 
-      <label class="upload-card">
-        <span>{{ uploading ? 'Uploading...' : 'Choose document' }}</span>
+      <section class="library-panel">
+        <label class="upload-card">
+          <span class="upload-card-title">{{ uploading ? 'Uploading...' : 'Upload a document' }}</span>
+          <span class="upload-card-copy">Choose a `.txt` or `.md` file to add it to your library.</span>
         <input accept=".txt,.md,text/plain,text/markdown" type="file" @change="uploadDocument" />
-      </label>
+        </label>
 
-      <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
-    </section>
+        <p class="upload-note">New uploads open in the reader right away.</p>
+        <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
+      </section>
+    </div>
 
     <section class="library-strip">
-      <p class="strip-label">Available documents</p>
+      <div class="library-strip-header">
+        <p class="strip-label">Library</p>
+        <p class="collection-meta">
+          {{ loading ? 'Loading documents...' : documents.length === 0 ? 'No documents yet' : `${documents.length} document${documents.length === 1 ? '' : 's'}` }}
+        </p>
+      </div>
+
       <p v-if="loading" class="muted">Loading documents...</p>
-      <p v-else-if="documents.length === 0" class="muted">No documents yet.</p>
+      <p v-else-if="documents.length === 0" class="muted">Your library is empty. Upload a document to start reading.</p>
 
       <div v-else class="document-grid">
         <button
@@ -1146,6 +1158,7 @@ function sliceParagraphParts(parts: ReaderPart[], start: number, end: number) {
         >
           <strong>{{ document.filename }}</strong>
           <span>{{ formatDate(document.createdAt) }}</span>
+          <span class="document-card-copy">Open in reader</span>
         </button>
       </div>
     </section>
