@@ -133,6 +133,70 @@ h1 {
   cursor: pointer;
 }
 
+.upload-divider {
+  color: #857b70;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.72rem;
+}
+
+.text-upload-form {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1.2rem;
+  border: 1px solid #ddd4ca;
+  border-radius: 20px;
+  background: #fcfaf6;
+}
+
+.text-upload-field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.text-upload-label {
+  color: #3d3832;
+  font-size: 0.9rem;
+}
+
+.text-upload-input {
+  width: 100%;
+  padding: 0.9rem 1rem;
+  border: 1px solid #d8d0c6;
+  border-radius: 14px;
+  color: #201c18;
+  background: #fffdf9;
+}
+
+.text-upload-input::placeholder {
+  color: #8b8176;
+}
+
+.text-upload-input:focus {
+  outline: none;
+  border-color: #bcb0a3;
+  box-shadow: 0 0 0 3px rgba(188, 176, 163, 0.18);
+}
+
+.text-upload-textarea {
+  min-height: 10rem;
+  resize: vertical;
+}
+
+.text-upload-button {
+  padding: 0.95rem 1.1rem;
+  border-radius: 999px;
+  color: #f7f2ea;
+  background: #2a2520;
+  cursor: pointer;
+}
+
+.text-upload-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .error {
   margin: 0;
   color: #a34339;

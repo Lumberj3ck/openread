@@ -40,6 +40,11 @@ type translationRequest struct {
 	TargetLanguage string   `json:"targetLanguage"`
 }
 
+type documentCreateRequest struct {
+	Filename string `json:"filename"`
+	Content  string `json:"content"`
+}
+
 type translationResponse struct {
 	Translations []translatedText `json:"translations"`
 }
@@ -177,54 +182,90 @@ func (s *server) handleGetDocument(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
-	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+	contentType := strings.TrimSpace(r.Header.Get("Content-Type"))
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid upload payload")
+			return
+		}
+
+		file, header, err := r.FormFile("document")
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "document file is required")
+			return
+		}
+		defer file.Close()
+
+		content, err := readUploadedText(file, header)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		doc, err := s.saveDocument(header.Filename, content)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		writeJSON(w, http.StatusCreated, doc)
+		return
+	}
+
+	var request documentCreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid upload payload")
 		return
 	}
 
-	file, header, err := r.FormFile("document")
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "document file is required")
-		return
-	}
-	defer file.Close()
-
-	content, err := readUploadedText(file, header)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	content := strings.TrimSpace(request.Content)
+	if content == "" {
+		writeError(w, http.StatusBadRequest, "document text is required")
 		return
 	}
 
+	filename := strings.TrimSpace(request.Filename)
+	if filename == "" {
+		filename = "Pasted note"
+	}
+
+	doc, err := s.saveDocument(filename, content)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, doc)
+}
+
+func (s *server) saveDocument(filename, content string) (document, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	result, err := s.db.Exec(
 		`INSERT INTO documents (filename, content, created_at) VALUES (?, ?, ?)`,
-		header.Filename,
+		filename,
 		content,
 		now,
 	)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to save document")
-		return
+		return document{}, fmt.Errorf("failed to save document")
 	}
 
 	id, err := result.LastInsertId()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to load saved document")
-		return
+		return document{}, fmt.Errorf("failed to load saved document")
 	}
 
 	createdAt, err := time.Parse(time.RFC3339, now)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to parse save timestamp")
-		return
+		return document{}, fmt.Errorf("failed to parse save timestamp")
 	}
 
-	writeJSON(w, http.StatusCreated, document{
+	return document{
 		ID:        id,
-		Filename:  header.Filename,
+		Filename:  filename,
 		Content:   content,
 		CreatedAt: createdAt,
-	})
+	}, nil
 }
 
 func (s *server) handleTranslateSelections(w http.ResponseWriter, r *http.Request) {

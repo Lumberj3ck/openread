@@ -170,6 +170,8 @@ const readerPages = ref<ReaderParagraph[][]>([])
 const loading = ref(false)
 const uploading = ref(false)
 const errorMessage = ref('')
+const textUploadTitle = ref('')
+const textUploadContent = ref('')
 const selectedRanges = ref<SelectionRange[]>([])
 const previewRange = ref<SelectionRange | null>(null)
 const hoveredWordIndex = ref<number | null>(null)
@@ -413,18 +415,59 @@ async function uploadDocument(event: Event) {
       throw new Error(data.error ?? 'Upload failed')
     }
 
-    await loadDocuments()
-    activeDocument.value = data
-    resetReaderState()
-    viewMode.value = 'reader'
-    await paginateReader()
-    setRouteHash(buildDocumentRouteHash(data.id))
+    await finishDocumentUpload(data)
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : 'Unknown error'
   } finally {
     uploading.value = false
     input.value = ''
   }
+}
+
+async function uploadTextDocument() {
+  const content = textUploadContent.value.trim()
+  if (content === '') {
+    errorMessage.value = 'Document text is required'
+    return
+  }
+
+  uploading.value = true
+  errorMessage.value = ''
+
+  try {
+    const response = await fetch('/api/documents', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        filename: textUploadTitle.value.trim(),
+        content,
+      }),
+    })
+
+    const data = await response.json()
+    if (!response.ok) {
+      throw new Error(data.error ?? 'Upload failed')
+    }
+
+    textUploadTitle.value = ''
+    textUploadContent.value = ''
+    await finishDocumentUpload(data)
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : 'Unknown error'
+  } finally {
+    uploading.value = false
+  }
+}
+
+async function finishDocumentUpload(data: DocumentRecord) {
+  await loadDocuments()
+  activeDocument.value = data
+  resetReaderState()
+  viewMode.value = 'reader'
+  await paginateReader()
+  setRouteHash(buildDocumentRouteHash(data.id))
 }
 
 async function syncTranslations(groups: Array<{ key: string; text: string }>) {
@@ -1289,15 +1332,38 @@ function sliceParagraphParts(parts: ReaderPart[], start: number, end: number) {
       <section class="upload-stage">
         <p class="eyebrow">OpenRead</p>
         <h1>A quiet place to read your own texts.</h1>
-        <p class="lede">Upload a plain text or markdown file, open it in the reader, and translate passages as you go.</p>
+        <p class="lede">Upload a plain text or markdown file, or paste text directly, then open it in the reader and translate passages as you go.</p>
       </section>
 
       <section class="library-panel">
         <label class="upload-card">
-          <span class="upload-card-title">{{ uploading ? 'Uploading...' : 'Upload a document' }}</span>
+          <span class="upload-card-title">{{ uploading ? 'Uploading...' : 'Upload a file' }}</span>
           <span class="upload-card-copy">Choose a `.txt` or `.md` file to add it to your library.</span>
-        <input accept=".txt,.md,text/plain,text/markdown" type="file" @change="uploadDocument" />
+          <input accept=".txt,.md,text/plain,text/markdown" type="file" @change="uploadDocument" />
         </label>
+
+        <div class="upload-divider" aria-hidden="true">or</div>
+
+        <form class="text-upload-form" @submit.prevent="uploadTextDocument">
+          <label class="text-upload-field">
+            <span class="text-upload-label">Title</span>
+            <input v-model="textUploadTitle" class="text-upload-input" type="text" placeholder="Pasted note" />
+          </label>
+
+          <label class="text-upload-field">
+            <span class="text-upload-label">Paste text</span>
+            <textarea
+              v-model="textUploadContent"
+              class="text-upload-input text-upload-textarea"
+              rows="8"
+              placeholder="Paste a passage, article, chapter, or notes here."
+            ></textarea>
+          </label>
+
+          <button class="text-upload-button" type="submit" :disabled="uploading || textUploadContent.trim() === ''">
+            {{ uploading ? 'Saving...' : 'Save pasted text' }}
+          </button>
+        </form>
 
         <p class="upload-note">New uploads open in the reader right away.</p>
         <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
