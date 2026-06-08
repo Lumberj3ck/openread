@@ -189,6 +189,8 @@ h1 {
 
 .translation-group {
   position: relative;
+  display: inline-block;
+  vertical-align: baseline;
 }
 
 .translation-base {
@@ -203,7 +205,7 @@ h1 {
   display: flex;
   justify-content: space-between;
   gap: 0.8em;
-  transform: translateY(0.56em);
+  transform: translateY(-0.56em);
   font-size: 0.48em;
   line-height: 1;
   white-space: nowrap;
