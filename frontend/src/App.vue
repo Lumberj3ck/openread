@@ -47,6 +47,11 @@ type ReaderLayoutMetrics = {
 }
 
 type ViewMode = 'library' | 'reader'
+
+type AppRoute =
+  | { name: 'library' }
+  | { name: 'document'; id: number }
+
 type TranslationItem = {
   key: string
   text: string
@@ -144,6 +149,7 @@ const readerFontScaleStep = 0.1
 const minReaderColumnWidth = 760
 const maxReaderColumnWidth = 1320
 const readerColumnWidthStep = 80
+const libraryRouteHash = '#/'
 
 const documents = ref<DocumentSummary[]>([])
 const activeDocument = ref<DocumentRecord | null>(null)
@@ -290,12 +296,15 @@ const currentPageSegments = computed(() => {
 onMounted(async () => {
   window.addEventListener('mouseup', finalizeSelection)
   window.addEventListener('resize', handleViewportChange)
+  window.addEventListener('hashchange', handleRouteChange)
   await loadDocuments()
+  await syncViewWithRoute()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('mouseup', finalizeSelection)
   window.removeEventListener('resize', handleViewportChange)
+  window.removeEventListener('hashchange', handleRouteChange)
 })
 
 watch(currentPageTranslationGroups, async (groups) => {
@@ -346,6 +355,10 @@ async function openDocument(id: number) {
   }
 }
 
+function navigateToDocument(id: number) {
+  setRouteHash(buildDocumentRouteHash(id))
+}
+
 async function uploadDocument(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -375,6 +388,7 @@ async function uploadDocument(event: Event) {
     resetReaderState()
     viewMode.value = 'reader'
     await paginateReader()
+    setRouteHash(buildDocumentRouteHash(data.id))
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : 'Unknown error'
   } finally {
@@ -473,8 +487,73 @@ function goToNextPage() {
 }
 
 function returnToLibrary() {
+  activeDocument.value = null
   readerSidebarOpen.value = false
   viewMode.value = 'library'
+}
+
+function navigateToLibrary() {
+  setRouteHash(libraryRouteHash)
+}
+
+function buildDocumentRouteHash(id: number) {
+  return `#/documents/${id}`
+}
+
+function parseRouteHash(hash: string): AppRoute | null {
+  if (hash === '' || hash === '#' || hash === libraryRouteHash) {
+    return { name: 'library' }
+  }
+
+  const documentMatch = hash.match(/^#\/documents\/(\d+)\/?$/)
+  if (!documentMatch) {
+    return null
+  }
+
+  const id = Number.parseInt(documentMatch[1], 10)
+  if (!Number.isInteger(id) || id <= 0) {
+    return null
+  }
+
+  return { name: 'document', id }
+}
+
+function setRouteHash(hash: string) {
+  if (window.location.hash === hash) {
+    return
+  }
+
+  window.location.hash = hash
+}
+
+function replaceRouteHash(hash: string) {
+  const url = new URL(window.location.href)
+  url.hash = hash.slice(1)
+  window.history.replaceState(null, '', url)
+}
+
+async function handleRouteChange() {
+  await syncViewWithRoute()
+}
+
+async function syncViewWithRoute() {
+  const route = parseRouteHash(window.location.hash)
+  if (!route) {
+    replaceRouteHash(libraryRouteHash)
+    returnToLibrary()
+    return
+  }
+
+  if (route.name === 'library') {
+    returnToLibrary()
+    return
+  }
+
+  if (viewMode.value === 'reader' && activeDocument.value?.id === route.id) {
+    return
+  }
+
+  await openDocument(route.id)
 }
 
 async function handleViewportChange() {
@@ -1159,7 +1238,7 @@ function sliceParagraphParts(parts: ReaderPart[], start: number, end: number) {
           v-for="document in documents"
           :key="document.id"
           class="document-card"
-          @click="openDocument(document.id)"
+          @click="navigateToDocument(document.id)"
         >
           <strong>{{ document.filename }}</strong>
           <span>{{ formatDate(document.createdAt) }}</span>
@@ -1176,7 +1255,7 @@ function sliceParagraphParts(parts: ReaderPart[], start: number, end: number) {
           class="reader-home-button"
           aria-label="Return to library"
           title="Return to library"
-          @click="returnToLibrary"
+          @click="navigateToLibrary"
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5.5v-6h-3v6H5a1 1 0 0 1-1-1z" />
