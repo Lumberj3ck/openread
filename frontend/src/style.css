@@ -189,8 +189,6 @@ h1 {
 
 .translation-group {
   position: relative;
-  display: inline-block;
-  vertical-align: baseline;
 }
 
 .translation-base {

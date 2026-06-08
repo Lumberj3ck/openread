@@ -30,6 +30,11 @@ type PreparedParagraph = ParsedParagraph & {
   prepared: PreparedTextWithSegments
 }
 
+type ReaderParagraph = {
+  sourceParagraphIndex: number
+  parts: ReaderPart[]
+}
+
 type ReaderLayoutMetrics = {
   font: string
   letterSpacing: number
@@ -63,7 +68,7 @@ const documents = ref<DocumentSummary[]>([])
 const activeDocument = ref<DocumentRecord | null>(null)
 const viewMode = ref<ViewMode>('library')
 const currentPageIndex = ref(0)
-const readerPages = ref<ReaderPart[][][]>([])
+const readerPages = ref<ReaderParagraph[][]>([])
 const loading = ref(false)
 const uploading = ref(false)
 const errorMessage = ref('')
@@ -82,6 +87,8 @@ let translationRequestVersion = 0
 let preparedParagraphsCache: PreparedParagraph[] = []
 let preparedDocumentID: number | null = null
 let preparedLayoutCacheKey = ''
+let preparedParagraphLineRanges: Array<Array<{ start: number; end: number }>> = []
+let preparedParagraphLineRangesWidth = 0
 
 const parsedParagraphs = computed(() => {
   if (!activeDocument.value) {
@@ -139,7 +146,7 @@ const wordLookup = computed(() => {
 
 const currentPageTranslationGroups = computed(() => {
   return currentPage.value.flatMap((paragraph, paragraphIndex) => {
-    const words = paragraph.filter((part): part is Extract<ReaderPart, { kind: 'word' }> => part.kind === 'word')
+    const words = paragraph.parts.filter((part): part is Extract<ReaderPart, { kind: 'word' }> => part.kind === 'word')
     if (words.length === 0) {
       return [] as TranslationGroup[]
     }
@@ -439,6 +446,8 @@ function resetPreparedParagraphCache() {
   preparedParagraphsCache = []
   preparedDocumentID = null
   preparedLayoutCacheKey = ''
+  preparedParagraphLineRanges = []
+  preparedParagraphLineRangesWidth = 0
 }
 
 function normalizeDocumentText(content: string) {
@@ -524,17 +533,17 @@ function translationCacheKey(text: string) {
   return `English:${text}`
 }
 
-function buildParagraphSegments(paragraph: ReaderPart[], paragraphIndex: number, groups: TranslationGroup[]): ParagraphSegment[] {
+function buildParagraphSegments(paragraph: ReaderParagraph, paragraphIndex: number, groups: TranslationGroup[]): ParagraphSegment[] {
   if (groups.length === 0) {
-    return [{ type: 'plain', key: `${paragraphIndex}-plain-0`, parts: paragraph }]
+    return [{ type: 'plain', key: `${paragraphIndex}-plain-0`, parts: paragraph.parts }]
   }
 
   const segments: ParagraphSegment[] = []
   let cursor = 0
 
   for (const group of groups) {
-    const startIndex = paragraph.findIndex((part) => part.kind === 'word' && part.index === group.start)
-    const endIndex = findLastWordPartIndex(paragraph, group.end)
+    const startIndex = paragraph.parts.findIndex((part) => part.kind === 'word' && part.index === group.start)
+    const endIndex = findLastWordPartIndex(paragraph.parts, group.end)
     if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
       continue
     }
@@ -543,24 +552,30 @@ function buildParagraphSegments(paragraph: ReaderPart[], paragraphIndex: number,
       segments.push({
         type: 'plain',
         key: `${paragraphIndex}-plain-${cursor}`,
-        parts: paragraph.slice(cursor, startIndex),
+        parts: paragraph.parts.slice(cursor, startIndex),
       })
     }
 
-    segments.push({
-      type: 'group',
-      key: group.key,
-      parts: paragraph.slice(startIndex, endIndex + 1),
-      translation: translationMap.value.get(group.key) ?? '',
+    const selectedParts = paragraph.parts.slice(startIndex, endIndex + 1)
+    const lineFragments = splitGroupPartsByLine(paragraph.sourceParagraphIndex, selectedParts)
+    const translations = splitTranslationAcrossFragments(translationMap.value.get(group.key) ?? '', lineFragments)
+
+    lineFragments.forEach((parts, fragmentIndex) => {
+      segments.push({
+        type: 'group',
+        key: `${group.key}:${fragmentIndex}`,
+        parts,
+        translation: translations[fragmentIndex] ?? '',
+      })
     })
     cursor = endIndex + 1
   }
 
-  if (cursor < paragraph.length) {
+  if (cursor < paragraph.parts.length) {
     segments.push({
       type: 'plain',
       key: `${paragraphIndex}-plain-${cursor}`,
-      parts: paragraph.slice(cursor),
+      parts: paragraph.parts.slice(cursor),
     })
   }
 
@@ -586,6 +601,51 @@ function isSingleTranslationToken(translation: string) {
   return splitTranslationTokens(translation).length <= 1
 }
 
+function splitGroupPartsByLine(sourceParagraphIndex: number, parts: ReaderPart[]) {
+  const lineRanges = preparedParagraphLineRanges[sourceParagraphIndex] ?? []
+  if (parts.length === 0 || lineRanges.length === 0) {
+    return [parts]
+  }
+
+  const groupStart = parts[0].start
+  const groupEnd = parts[parts.length - 1].end
+  const fragments = lineRanges
+    .map((lineRange) => ({
+      start: Math.max(groupStart, lineRange.start),
+      end: Math.min(groupEnd, lineRange.end),
+    }))
+    .filter((lineRange) => lineRange.start < lineRange.end)
+    .map((lineRange) => sliceParagraphParts(parts, lineRange.start, lineRange.end))
+    .filter((fragment) => fragment.length > 0)
+
+  return fragments.length > 0 ? fragments : [parts]
+}
+
+function splitTranslationAcrossFragments(translation: string, fragments: ReaderPart[][]) {
+  if (fragments.length <= 1) {
+    return [translation]
+  }
+
+  const tokens = splitTranslationTokens(translation)
+  if (tokens.length === 0) {
+    return fragments.map(() => '')
+  }
+
+  const wordCounts = fragments.map((fragment) => fragment.filter((part) => part.kind === 'word').length)
+  const totalWordCount = wordCounts.reduce((sum, count) => sum + count, 0)
+  if (totalWordCount === 0) {
+    return [translation, ...fragments.slice(1).map(() => '')]
+  }
+
+  let consumedWordCount = 0
+  return wordCounts.map((wordCount) => {
+    const start = Math.round(consumedWordCount * tokens.length / totalWordCount)
+    consumedWordCount += wordCount
+    const end = Math.round(consumedWordCount * tokens.length / totalWordCount)
+    return tokens.slice(start, end).join(' ')
+  })
+}
+
 async function paginateReader() {
   if (viewMode.value !== 'reader' || parsedParagraphs.value.length === 0) {
     readerPages.value = parsedParagraphs.value.length === 0 ? [] : readerPages.value
@@ -608,7 +668,8 @@ async function paginateReader() {
   }
 
   const preparedParagraphs = ensurePreparedParagraphs(layoutMetrics)
-  const pages = buildReaderPages(preparedParagraphs, layoutMetrics)
+  const lineRangesByParagraph = ensurePreparedParagraphLineRanges(preparedParagraphs, layoutMetrics.width)
+  const pages = buildReaderPages(preparedParagraphs, lineRangesByParagraph, layoutMetrics)
 
   readerPages.value = pages
   currentPageIndex.value = Math.min(currentPageIndex.value, Math.max(pages.length - 1, 0))
@@ -695,16 +756,32 @@ function ensurePreparedParagraphs(layoutMetrics: ReaderLayoutMetrics) {
   }))
   preparedDocumentID = documentID
   preparedLayoutCacheKey = layoutMetrics.cacheKey
+  preparedParagraphLineRanges = []
+  preparedParagraphLineRangesWidth = 0
   return preparedParagraphsCache
 }
 
-function buildReaderPages(paragraphs: PreparedParagraph[], layoutMetrics: ReaderLayoutMetrics) {
-  const pages: ReaderPart[][][] = []
-  let currentPage: ReaderPart[][] = []
+function ensurePreparedParagraphLineRanges(paragraphs: PreparedParagraph[], width: number) {
+  if (preparedParagraphLineRangesWidth === width && preparedParagraphLineRanges.length === paragraphs.length) {
+    return preparedParagraphLineRanges
+  }
+
+  preparedParagraphLineRanges = paragraphs.map((paragraph) => getParagraphLineRanges(paragraph, width))
+  preparedParagraphLineRangesWidth = width
+  return preparedParagraphLineRanges
+}
+
+function buildReaderPages(
+  paragraphs: PreparedParagraph[],
+  lineRangesByParagraph: Array<Array<{ start: number; end: number }>>,
+  layoutMetrics: ReaderLayoutMetrics,
+) {
+  const pages: ReaderParagraph[][] = []
+  let currentPage: ReaderParagraph[] = []
   let remainingHeight = layoutMetrics.height
 
-  for (const paragraph of paragraphs) {
-    const lineRanges = getParagraphLineRanges(paragraph, layoutMetrics.width)
+  for (const [paragraphIndex, paragraph] of paragraphs.entries()) {
+    const lineRanges = lineRangesByParagraph[paragraphIndex] ?? []
     if (lineRanges.length === 0) {
       continue
     }
@@ -741,7 +818,10 @@ function buildReaderPages(paragraphs: PreparedParagraph[], layoutMetrics: Reader
       )
 
       if (fragment.length > 0) {
-        currentPage.push(fragment)
+        currentPage.push({
+          sourceParagraphIndex: paragraphIndex,
+          parts: fragment,
+        })
       }
 
       remainingHeight -= (lineEndIndex - lineStartIndex) * layoutMetrics.lineHeight + layoutMetrics.paragraphSpacing
