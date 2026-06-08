@@ -141,6 +141,9 @@ const highlightOptions: HighlightOption[] = [
 const minReaderFontScale = 0.85
 const maxReaderFontScale = 1.35
 const readerFontScaleStep = 0.1
+const minReaderColumnWidth = 760
+const maxReaderColumnWidth = 1320
+const readerColumnWidthStep = 80
 
 const documents = ref<DocumentSummary[]>([])
 const activeDocument = ref<DocumentRecord | null>(null)
@@ -159,6 +162,7 @@ const isSelecting = ref(false)
 const readerSidebarOpen = ref(false)
 const readerFontID = ref(readerFontOptions[0].id)
 const readerFontScale = ref(1)
+const readerColumnWidth = ref(1100)
 const readerHighlightID = ref(highlightOptions[0].id)
 const readerRef = ref<HTMLElement | null>(null)
 const translations = ref<TranslationItem[]>([])
@@ -224,10 +228,12 @@ const translationMap = computed(() => new Map(translations.value.map((item) => [
 const activeReaderFont = computed(() => readerFontOptions.find((option) => option.id === readerFontID.value) ?? readerFontOptions[0])
 const activeHighlightOption = computed(() => highlightOptions.find((option) => option.id === readerHighlightID.value) ?? highlightOptions[0])
 const readerFontScalePercent = computed(() => `${Math.round(readerFontScale.value * 100)}%`)
+const readerColumnWidthLabel = computed(() => `${readerColumnWidth.value}px`)
 const readerThemeStyle = computed(() => ({
   '--reader-font-family': activeReaderFont.value.family,
   '--reader-font-size': buildReaderFontSize(readerFontScale.value),
   '--reader-font-size-mobile': `${1.15 * readerFontScale.value}rem`,
+  '--reader-column-width': `${readerColumnWidth.value}px`,
   '--reader-highlight-bg': activeHighlightOption.value.background,
   '--reader-highlight-border': activeHighlightOption.value.border,
   '--reader-highlight-removable-bg': activeHighlightOption.value.removableBackground,
@@ -296,7 +302,7 @@ watch(currentPageTranslationGroups, async (groups) => {
   await syncTranslations(groups)
 }, { deep: true })
 
-watch([readerSidebarOpen, readerFontID, readerFontScale], async () => {
+watch([readerSidebarOpen, readerFontID, readerFontScale, readerColumnWidth], async () => {
   if (viewMode.value !== 'reader' || !activeDocument.value) {
     return
   }
@@ -486,6 +492,14 @@ function decreaseReaderFontSize() {
   readerFontScale.value = clampReaderFontScale(readerFontScale.value - readerFontScaleStep)
 }
 
+function increaseReaderColumnWidth() {
+  readerColumnWidth.value = clampReaderColumnWidth(readerColumnWidth.value + readerColumnWidthStep)
+}
+
+function decreaseReaderColumnWidth() {
+  readerColumnWidth.value = clampReaderColumnWidth(readerColumnWidth.value - readerColumnWidthStep)
+}
+
 function handleWordMouseDown(index: number, event: MouseEvent) {
   event.preventDefault()
   clearNativeSelection()
@@ -575,6 +589,10 @@ function clampReaderFontScale(value: number) {
 
 function buildReaderFontSize(scale: number) {
   return `clamp(${(1.3 * scale).toFixed(3)}rem, ${(2 * scale).toFixed(3)}vw, ${(1.75 * scale).toFixed(3)}rem)`
+}
+
+function clampReaderColumnWidth(value: number) {
+  return Math.min(maxReaderColumnWidth, Math.max(minReaderColumnWidth, value))
 }
 
 function normalizeRange(start: number, end: number): SelectionRange {
@@ -1258,6 +1276,24 @@ function sliceParagraphParts(parts: ReaderPart[], start: number, end: number) {
               </div>
               <button class="reader-size-button" :disabled="readerFontScale >= maxReaderFontScale" @click="increaseReaderFontSize">
                 A+
+              </button>
+            </div>
+          </section>
+
+          <section class="reader-control-group">
+            <div class="reader-control-label-row">
+              <strong>Column width</strong>
+              <span>{{ readerColumnWidthLabel }}</span>
+            </div>
+            <div class="reader-size-controls">
+              <button class="reader-size-button" :disabled="readerColumnWidth <= minReaderColumnWidth" @click="decreaseReaderColumnWidth">
+                Narrower
+              </button>
+              <div class="reader-size-meter" aria-hidden="true">
+                <span class="reader-size-meter-fill" :style="{ width: `${((readerColumnWidth - minReaderColumnWidth) / (maxReaderColumnWidth - minReaderColumnWidth)) * 100}%` }"></span>
+              </div>
+              <button class="reader-size-button" :disabled="readerColumnWidth >= maxReaderColumnWidth" @click="increaseReaderColumnWidth">
+                Wider
               </button>
             </div>
           </section>
