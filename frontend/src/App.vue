@@ -20,6 +20,7 @@ type SelectionRange = {
 type ReaderPart =
   | { kind: 'word'; index: number; text: string; start: number; end: number }
   | { kind: 'space'; text: string; start: number; end: number }
+  | { kind: 'line-break'; text: string; start: number; end: number }
 
 type ParsedParagraph = {
   text: string
@@ -105,7 +106,7 @@ const parsedParagraphs = computed(() => {
       let cursor = 0
       const parts: ReaderPart[] = []
 
-      for (const token of paragraph.split(/(\s+)/)) {
+      for (const token of paragraph.match(/\n+|[^\S\n]+|[^\s]+/g) ?? []) {
         if (!token) {
           continue
         }
@@ -114,7 +115,12 @@ const parsedParagraphs = computed(() => {
         const end = cursor + token.length
         cursor = end
 
-        if (/^\s+$/.test(token)) {
+        if (/^\n+$/.test(token)) {
+          parts.push({ kind: 'line-break', text: token, start, end })
+          continue
+        }
+
+        if (/^[^\S\n]+$/.test(token)) {
           parts.push({ kind: 'space', text: token, start, end })
           continue
         }
@@ -451,7 +457,7 @@ function resetPreparedParagraphCache() {
 }
 
 function normalizeDocumentText(content: string) {
-  return content.replace(/\r\n?/g, '\n')
+  return content.replace(/\r\n?|[\u000B\u000C\u0085\u2028\u2029]/g, '\n')
 }
 
 function normalizeRange(start: number, end: number): SelectionRange {
@@ -559,15 +565,42 @@ function buildParagraphSegments(paragraph: ReaderParagraph, paragraphIndex: numb
     const selectedParts = paragraph.parts.slice(startIndex, endIndex + 1)
     const lineFragments = splitGroupPartsByLine(paragraph.sourceParagraphIndex, selectedParts)
     const translations = splitTranslationAcrossFragments(translationMap.value.get(group.key) ?? '', lineFragments)
+    let fragmentCursor = selectedParts[0]?.start ?? 0
 
     lineFragments.forEach((parts, fragmentIndex) => {
+      const fragmentStart = parts[0]?.start
+      const fragmentEnd = parts[parts.length - 1]?.end
+      if (fragmentStart === undefined || fragmentEnd === undefined) {
+        return
+      }
+
+      if (fragmentStart > fragmentCursor) {
+        segments.push({
+          type: 'plain',
+          key: `${group.key}:separator:${fragmentCursor}`,
+          parts: sliceParagraphParts(selectedParts, fragmentCursor, fragmentStart),
+        })
+      }
+
       segments.push({
         type: 'group',
         key: `${group.key}:${fragmentIndex}`,
         parts,
         translation: translations[fragmentIndex] ?? '',
       })
+
+      fragmentCursor = fragmentEnd
     })
+
+    const selectedEnd = selectedParts[selectedParts.length - 1]?.end ?? fragmentCursor
+    if (fragmentCursor < selectedEnd) {
+      segments.push({
+        type: 'plain',
+        key: `${group.key}:separator:${fragmentCursor}`,
+        parts: sliceParagraphParts(selectedParts, fragmentCursor, selectedEnd),
+      })
+    }
+
     cursor = endIndex + 1
   }
 
@@ -860,20 +893,20 @@ function getParagraphLineRanges(paragraph: PreparedParagraph, width: number) {
 
     lineRanges.push(lineRange)
     cursor = line.end
-    sourceOffset = lineRange.end
+    sourceOffset = skipLineBreaks(paragraph.text, lineRange.end)
   }
 
   return lineRanges.length > 0 ? lineRanges : [{ start: 0, end: paragraph.text.length }]
 }
 
 function consumeRenderedLineRange(sourceText: string, renderedText: string, start: number) {
-  let sourceIndex = start
+  let sourceIndex = skipLineBreaks(sourceText, start)
+  const rangeStart = sourceIndex
   let renderedIndex = 0
 
   while (sourceIndex < sourceText.length && renderedIndex < renderedText.length) {
     if (sourceText[sourceIndex] === '\n') {
-      sourceIndex += 1
-      continue
+      break
     }
 
     if (sourceText[sourceIndex] !== renderedText[renderedIndex]) {
@@ -888,11 +921,17 @@ function consumeRenderedLineRange(sourceText: string, renderedText: string, star
     return null
   }
 
+  return { start: rangeStart, end: sourceIndex }
+}
+
+function skipLineBreaks(sourceText: string, start: number) {
+  let sourceIndex = start
+
   while (sourceIndex < sourceText.length && sourceText[sourceIndex] === '\n') {
     sourceIndex += 1
   }
 
-  return { start, end: sourceIndex }
+  return sourceIndex
 }
 
 function sliceParagraphParts(parts: ReaderPart[], start: number, end: number) {
@@ -914,6 +953,16 @@ function sliceParagraphParts(parts: ReaderPart[], start: number, end: number) {
       fragment.push({
         kind: 'word',
         index: part.index,
+        text,
+        start: sliceStart,
+        end: sliceEnd,
+      })
+      continue
+    }
+
+    if (part.kind === 'line-break') {
+      fragment.push({
+        kind: 'line-break',
         text,
         start: sliceStart,
         end: sliceEnd,
@@ -987,6 +1036,9 @@ function sliceParagraphParts(parts: ReaderPart[], start: number, end: number) {
                 >
                   {{ part.text }}
                 </span>
+                <template v-else-if="part.kind === 'line-break'">
+                  <br v-for="breakIndex in part.text.length" :key="`${segment.key}-${part.start}-${part.end}-break-${breakIndex}`" />
+                </template>
                 <span v-else class="space">{{ part.text }}</span>
               </template>
             </template>
@@ -1006,6 +1058,9 @@ function sliceParagraphParts(parts: ReaderPart[], start: number, end: number) {
                   >
                     {{ part.text }}
                   </span>
+                  <template v-else-if="part.kind === 'line-break'">
+                    <br v-for="breakIndex in part.text.length" :key="`${segment.key}-${part.start}-${part.end}-break-${breakIndex}`" />
+                  </template>
                   <span v-else class="space">{{ part.text }}</span>
                 </template>
               </span>
