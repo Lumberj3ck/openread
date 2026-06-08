@@ -329,10 +329,10 @@ func (s *server) translateText(ctx context.Context, text, targetLanguage string)
 	body, err := json.Marshal(groqChatRequest{
 		Model: s.groqModel,
 		Messages: []groqChatMessage{
-			{Role: "system", Content: "You are a precise translation engine. Return only the translation text with no commentary, no markdown, and no quotes."},
+			{Role: "system", Content: "You are a precise translation engine. The input may be a single word, inflected form, sentence fragment, or full sentence. Always translate the exact input literally into the target language. Never ask for more context. Never explain. Never refuse. If the input is already in the target language or is ambiguous, return the closest literal translation or the original text. Return only the translated text with no commentary, no markdown, and no quotes."},
 			{Role: "user", Content: buildTranslationPrompt(text, targetLanguage)},
 		},
-		Temperature: 0.2,
+		Temperature: 0,
 	})
 	if err != nil {
 		return "", fmt.Errorf("marshal groq request: %w", err)
@@ -377,7 +377,7 @@ func buildTranslationPrompt(text, targetLanguage string) string {
 	var prompt strings.Builder
 	prompt.WriteString("Translate the following text into ")
 	prompt.WriteString(targetLanguage)
-	prompt.WriteString(". Preserve meaning, punctuation, and tone. Return only the translated text.\n\n")
+	prompt.WriteString(". The text may be only one word or a fragment. Preserve meaning, punctuation, and tone. Return only the translated text.\n\nTEXT:\n")
 	prompt.WriteString(text)
 	return prompt.String()
 }
