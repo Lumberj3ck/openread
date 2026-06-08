@@ -203,7 +203,7 @@ h1 {
   display: flex;
   justify-content: space-between;
   gap: 0.8em;
-  transform: translateY(-0.42em);
+  transform: translateY(0.56em);
   font-size: 0.48em;
   line-height: 1;
   white-space: nowrap;
