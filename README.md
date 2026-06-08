@@ -55,6 +55,8 @@ The app runs on `http://localhost:5173` and proxies `/api` to the Go backend.
 
 ## Run with Docker Compose
 
+### Production-style stack
+
 Create a local `.env` file first:
 
 ```bash
@@ -71,3 +73,22 @@ The frontend is available at `http://localhost:5173`.
 The backend API is available at `http://localhost:8080`.
 
 The SQLite database is stored in the named Docker volume `backend-data`.
+
+### Development stack
+
+For live reload with Vite and Air, use the separate development file:
+
+```bash
+docker compose -f docker-compose.dev.yml up --build
+```
+
+This development setup uses:
+
+- Frontend runs with Vite at `http://localhost:5173`
+- Backend runs with Air at `http://localhost:8080`
+- Source folders are bind-mounted into the containers
+- Frontend dependencies live in the `frontend-node-modules` volume
+- Go module and build caches live in `backend-go-mod` and `backend-go-build`
+- SQLite data lives in the `backend-data` volume
+
+Changes to frontend and backend files should reload automatically while Compose is running.

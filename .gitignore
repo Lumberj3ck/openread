@@ -1,5 +1,6 @@
 backend/backend
 backend/data/*.db
+backend/tmp/
 frontend/dist/
 frontend/node_modules/
 frontend/src/*.js

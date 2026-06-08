@@ -1,3 +1,16 @@
+FROM golang:1.22-bookworm AS dev
+
+WORKDIR /app
+
+RUN go install github.com/air-verse/air@v1.52.3
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+EXPOSE 8080
+
+CMD ["air", "-c", ".air.toml"]
+
 FROM golang:1.22-bookworm AS builder
 
 WORKDIR /src
@@ -8,7 +21,7 @@ RUN go mod download
 COPY . ./
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/openread .
 
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim AS production
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates \
