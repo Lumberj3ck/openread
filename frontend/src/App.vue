@@ -138,6 +138,10 @@ const highlightOptions: HighlightOption[] = [
   },
 ]
 
+const minReaderFontScale = 0.85
+const maxReaderFontScale = 1.35
+const readerFontScaleStep = 0.1
+
 const documents = ref<DocumentSummary[]>([])
 const activeDocument = ref<DocumentRecord | null>(null)
 const viewMode = ref<ViewMode>('library')
@@ -154,6 +158,7 @@ const selectionEndIndex = ref<number | null>(null)
 const isSelecting = ref(false)
 const readerSidebarOpen = ref(false)
 const readerFontID = ref(readerFontOptions[0].id)
+const readerFontScale = ref(1)
 const readerHighlightID = ref(highlightOptions[0].id)
 const readerRef = ref<HTMLElement | null>(null)
 const translations = ref<TranslationItem[]>([])
@@ -218,8 +223,11 @@ const totalPages = computed(() => readerPages.value.length)
 const translationMap = computed(() => new Map(translations.value.map((item) => [item.key, item.translation])))
 const activeReaderFont = computed(() => readerFontOptions.find((option) => option.id === readerFontID.value) ?? readerFontOptions[0])
 const activeHighlightOption = computed(() => highlightOptions.find((option) => option.id === readerHighlightID.value) ?? highlightOptions[0])
+const readerFontScalePercent = computed(() => `${Math.round(readerFontScale.value * 100)}%`)
 const readerThemeStyle = computed(() => ({
   '--reader-font-family': activeReaderFont.value.family,
+  '--reader-font-size': buildReaderFontSize(readerFontScale.value),
+  '--reader-font-size-mobile': `${1.15 * readerFontScale.value}rem`,
   '--reader-highlight-bg': activeHighlightOption.value.background,
   '--reader-highlight-border': activeHighlightOption.value.border,
   '--reader-highlight-removable-bg': activeHighlightOption.value.removableBackground,
@@ -288,7 +296,7 @@ watch(currentPageTranslationGroups, async (groups) => {
   await syncTranslations(groups)
 }, { deep: true })
 
-watch([readerSidebarOpen, readerFontID], async () => {
+watch([readerSidebarOpen, readerFontID, readerFontScale], async () => {
   if (viewMode.value !== 'reader' || !activeDocument.value) {
     return
   }
@@ -470,6 +478,14 @@ function formatDate(value: string) {
   return new Date(value).toLocaleDateString()
 }
 
+function increaseReaderFontSize() {
+  readerFontScale.value = clampReaderFontScale(readerFontScale.value + readerFontScaleStep)
+}
+
+function decreaseReaderFontSize() {
+  readerFontScale.value = clampReaderFontScale(readerFontScale.value - readerFontScaleStep)
+}
+
 function handleWordMouseDown(index: number, event: MouseEvent) {
   event.preventDefault()
   clearNativeSelection()
@@ -551,6 +567,14 @@ function resetPreparedParagraphCache() {
 
 function normalizeDocumentText(content: string) {
   return content.replace(/\r\n?|[\u000B\u000C\u0085\u2028\u2029]/g, '\n')
+}
+
+function clampReaderFontScale(value: number) {
+  return Math.min(maxReaderFontScale, Math.max(minReaderFontScale, Number.parseFloat(value.toFixed(2))))
+}
+
+function buildReaderFontSize(scale: number) {
+  return `clamp(${(1.3 * scale).toFixed(3)}rem, ${(2 * scale).toFixed(3)}vw, ${(1.75 * scale).toFixed(3)}rem)`
 }
 
 function normalizeRange(start: number, end: number): SelectionRange {
@@ -1216,6 +1240,24 @@ function sliceParagraphParts(parts: ReaderPart[], start: number, end: number) {
               >
                 <strong>{{ option.label }}</strong>
                 <span>The reader should feel like a different edition.</span>
+              </button>
+            </div>
+          </section>
+
+          <section class="reader-control-group">
+            <div class="reader-control-label-row">
+              <strong>Size</strong>
+              <span>{{ readerFontScalePercent }}</span>
+            </div>
+            <div class="reader-size-controls">
+              <button class="reader-size-button" :disabled="readerFontScale <= minReaderFontScale" @click="decreaseReaderFontSize">
+                A-
+              </button>
+              <div class="reader-size-meter" aria-hidden="true">
+                <span class="reader-size-meter-fill" :style="{ width: `${((readerFontScale - minReaderFontScale) / (maxReaderFontScale - minReaderFontScale)) * 100}%` }"></span>
+              </div>
+              <button class="reader-size-button" :disabled="readerFontScale >= maxReaderFontScale" @click="increaseReaderFontSize">
+                A+
               </button>
             </div>
           </section>
