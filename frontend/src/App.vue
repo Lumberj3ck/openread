@@ -472,6 +472,11 @@ function goToNextPage() {
   }
 }
 
+function returnToLibrary() {
+  readerSidebarOpen.value = false
+  viewMode.value = 'library'
+}
+
 async function handleViewportChange() {
   if (viewMode.value !== 'reader' || !activeDocument.value) {
     return
@@ -1167,6 +1172,17 @@ function sliceParagraphParts(parts: ReaderPart[], start: number, end: number) {
   <main v-else class="reader-view" :style="readerThemeStyle">
     <section class="reader-body" :class="{ 'reader-body-sidebar-open': readerSidebarOpen }">
       <section class="reader-surface">
+        <button
+          class="reader-home-button"
+          aria-label="Return to library"
+          title="Return to library"
+          @click="returnToLibrary"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5.5v-6h-3v6H5a1 1 0 0 1-1-1z" />
+          </svg>
+        </button>
+
         <button
           v-if="!readerSidebarOpen"
           class="reader-sidebar-toggle"

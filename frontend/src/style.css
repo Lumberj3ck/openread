@@ -239,6 +239,33 @@ h1 {
   cursor: pointer;
 }
 
+.reader-home-button {
+  position: absolute;
+  top: 0.95rem;
+  left: max(1.25rem, 3vw);
+  z-index: 2;
+  width: 3rem;
+  height: 3rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 999px;
+  color: #f7efe2;
+  background: rgba(29, 23, 19, 0.92);
+  box-shadow: 0 10px 28px rgba(29, 23, 19, 0.12);
+  cursor: pointer;
+}
+
+.reader-home-button:hover {
+  background: #1d1713;
+}
+
+.reader-home-button svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  fill: currentColor;
+}
+
 .reader-sidebar-toggle:hover {
   background: #1d1713;
 }
@@ -565,6 +592,13 @@ h1 {
     top: 0.7rem;
     right: 1rem;
     padding: 0.7rem 0.9rem;
+  }
+
+  .reader-home-button {
+    top: 0.7rem;
+    left: 1rem;
+    width: 2.8rem;
+    height: 2.8rem;
   }
 
   .reader-sidebar {
