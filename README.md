@@ -52,3 +52,22 @@ npm run dev
 ```
 
 The app runs on `http://localhost:5173` and proxies `/api` to the Go backend.
+
+## Run with Docker Compose
+
+Create a local `.env` file first:
+
+```bash
+cp .env.example .env
+```
+
+Then set your values in `.env` and start both services:
+
+```bash
+docker compose up --build
+```
+
+The frontend is available at `http://localhost:5173`.
+The backend API is available at `http://localhost:8080`.
+
+The SQLite database is stored in the named Docker volume `backend-data`.

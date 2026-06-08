@@ -3,3 +3,4 @@ backend/data/*.db
 frontend/dist/
 frontend/node_modules/
 frontend/src/*.js
+.env
