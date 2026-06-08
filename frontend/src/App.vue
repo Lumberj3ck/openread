@@ -1113,12 +1113,13 @@ function sliceParagraphParts(parts: ReaderPart[], start: number, end: number) {
     <section class="reader-body" :class="{ 'reader-body-sidebar-open': readerSidebarOpen }">
       <section class="reader-surface">
         <button
+          v-if="!readerSidebarOpen"
           class="reader-sidebar-toggle"
           :aria-expanded="readerSidebarOpen"
           :title="readerSidebarOpen ? 'Close styling panel' : 'Open styling panel'"
           @click="readerSidebarOpen = !readerSidebarOpen"
         >
-          <span>{{ readerSidebarOpen ? 'Hide styling' : 'Style reader' }}</span>
+          <span>Style reader</span>
         </button>
 
         <article ref="readerRef" class="reader" @dragstart.prevent>
@@ -1182,6 +1183,17 @@ function sliceParagraphParts(parts: ReaderPart[], start: number, end: number) {
 
       <aside class="reader-sidebar" :class="{ 'reader-sidebar-open': readerSidebarOpen }" aria-label="Reader styling options">
         <div class="reader-sidebar-panel">
+          <div class="reader-sidebar-toolbar">
+            <button
+              class="reader-sidebar-toggle reader-sidebar-toggle-inline"
+              :aria-expanded="readerSidebarOpen"
+              title="Close styling panel"
+              @click="readerSidebarOpen = false"
+            >
+              <span>Hide styling</span>
+            </button>
+          </div>
+
           <div class="reader-sidebar-header">
             <p class="reader-sidebar-kicker">Reading room</p>
             <h2>Shape the page.</h2>
@@ -1231,7 +1243,7 @@ function sliceParagraphParts(parts: ReaderPart[], start: number, end: number) {
       </aside>
     </section>
 
-    <footer class="reader-footer">
+    <footer class="reader-footer" :class="{ 'reader-footer-sidebar-open': readerSidebarOpen }">
       <nav class="pager">
         <button class="pager-button" :disabled="currentPageIndex === 0" @click="goToPreviousPage">
           Previous page
