@@ -1,39 +1,43 @@
-
 # OpenRead
 
-First MVP scaffold for an open reading tool inspired by Readlang.
+OpenRead is a personal reading app for plain text and markdown documents.
+
+You can upload a file or paste text directly, open it in a focused reading view, highlight words or phrases, and translate selected passages inline.
 
 <img width="1380" height="666" alt="screenshot-2026-06-08_18-08-40" src="https://github.com/user-attachments/assets/2dc08b6b-eb18-4752-952f-8e7a51f85b47" />
 
-## Stack
+## Features
 
-- Frontend: Vue 3 + TypeScript + Vite
-- Backend: Go
-- Database: SQLite
+- Upload `.txt` and `.md` files
+- Paste text directly into the library screen
+- Store documents locally in SQLite
+- Open each document at its own reloadable URL
+- Highlight text selections in the reader
+- Translate selected passages through Groq
+- Adjust reader font, size, width, and highlight color
+- Persist reader preferences across reloads
 
-## First version
+## Requirements
 
-- Upload `.txt` and `.md` documents
-- Store document text in SQLite
-- Render text in a viewport-fitted reading view
-- Keep word-based highlights across pages
-- Translate highlighted text groups through Groq
+- `GROQ_API_KEY` is required
+- `GROQ_MODEL` is optional
 
-## Translation setup
-
-Set `GROQ_API_KEY` before running the backend.
-
-```bash
-export GROQ_API_KEY="your-api-key"
-```
-
-Optional:
+Create a local `.env` file:
 
 ```bash
-export GROQ_MODEL="llama-3.1-8b-instant"
+cp .env.example .env
 ```
 
-## Run the backend
+Then set at least:
+
+```env
+GROQ_API_KEY=your-api-key
+GROQ_MODEL=llama-3.1-8b-instant
+```
+
+## Local Development
+
+### Backend
 
 ```bash
 cd backend
@@ -41,9 +45,9 @@ go mod tidy
 go run .
 ```
 
-The API runs on `http://localhost:8080`.
+The backend runs on `http://localhost:8080`.
 
-## Run the frontend
+### Frontend
 
 ```bash
 cd frontend
@@ -51,32 +55,20 @@ npm install
 npm run dev
 ```
 
-The app runs on `http://localhost:5173` and proxies `/api` to the Go backend.
+The frontend runs on `http://localhost:5173`.
 
-## Run with Docker Compose
+## Docker
 
-### Production-style stack
-
-Create a local `.env` file first:
-
-```bash
-cp .env.example .env
-```
-
-Then set your values in `.env` and start both services:
+### Production-style Compose
 
 ```bash
 docker compose up --build
 ```
 
-The frontend is available at `http://localhost:5173`.
-The backend API is available at `http://localhost:8080`.
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:8080`
 
-The SQLite database is stored in the named Docker volume `backend-data`.
-
-### Development stack
-
-For live reload with Vite and Air, use the separate development file:
+### Development Compose
 
 ```bash
 docker compose -f docker-compose.dev.yml up --build
@@ -84,11 +76,17 @@ docker compose -f docker-compose.dev.yml up --build
 
 This development setup uses:
 
-- Frontend runs with Vite at `http://localhost:5173`
-- Backend runs with Air at `http://localhost:8080`
-- Source folders are bind-mounted into the containers
-- Frontend dependencies live in the `frontend-node-modules` volume
-- Go module and build caches live in `backend-go-mod` and `backend-go-build`
-- SQLite data lives in the `backend-data` volume
+- Vite for frontend hot reload
+- Air for Go rebuilds
+- bind mounts for `frontend/` and `backend/`
+- named volumes for SQLite data and dependency caches
 
-Changes to frontend and backend files should reload automatically while Compose is running.
+## Data
+
+- Local backend runs SQLite in `backend/data/openread.db`
+- Docker stores SQLite data in the `backend-data` volume
+
+## Notes
+
+- The backend fails on startup if `GROQ_API_KEY` is missing
+- Reader routes use hash URLs such as `#/documents/12` so reloading a document stays on that document
