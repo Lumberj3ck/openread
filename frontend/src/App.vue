@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { layoutNextLine, prepareWithSegments, type LayoutCursor, type PreparedTextWithSegments } from '@chenglou/pretext'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 type DocumentSummary = {
@@ -17,8 +18,27 @@ type SelectionRange = {
 }
 
 type ReaderPart =
-  | { kind: 'word'; index: number; text: string }
-  | { kind: 'space'; text: string }
+  | { kind: 'word'; index: number; text: string; start: number; end: number }
+  | { kind: 'space'; text: string; start: number; end: number }
+
+type ParsedParagraph = {
+  text: string
+  parts: ReaderPart[]
+}
+
+type PreparedParagraph = ParsedParagraph & {
+  prepared: PreparedTextWithSegments
+}
+
+type ReaderLayoutMetrics = {
+  font: string
+  letterSpacing: number
+  lineHeight: number
+  paragraphSpacing: number
+  width: number
+  height: number
+  cacheKey: string
+}
 
 type ViewMode = 'library' | 'reader'
 type TranslationItem = {
@@ -53,24 +73,29 @@ const hoveredWordIndex = ref<number | null>(null)
 const selectionStartIndex = ref<number | null>(null)
 const selectionEndIndex = ref<number | null>(null)
 const isSelecting = ref(false)
-const readerMeasureRef = ref<HTMLElement | null>(null)
+const readerRef = ref<HTMLElement | null>(null)
 const translations = ref<TranslationItem[]>([])
 const translationError = ref('')
 const translating = ref(false)
 const translationCache = ref<Record<number, TranslationCache>>({})
 let translationRequestVersion = 0
+let preparedParagraphsCache: PreparedParagraph[] = []
+let preparedDocumentID: number | null = null
+let preparedLayoutCacheKey = ''
 
 const parsedParagraphs = computed(() => {
   if (!activeDocument.value) {
-    return [] as ReaderPart[][]
+    return [] as ParsedParagraph[]
   }
 
+  const normalizedContent = normalizeDocumentText(activeDocument.value.content)
   let wordIndex = 0
-  return activeDocument.value.content
+  return normalizedContent
     .split(/\n\s*\n/g)
     .map((paragraph) => paragraph.trim())
     .filter(Boolean)
     .map((paragraph) => {
+      let cursor = 0
       const parts: ReaderPart[] = []
 
       for (const token of paragraph.split(/(\s+)/)) {
@@ -78,16 +103,23 @@ const parsedParagraphs = computed(() => {
           continue
         }
 
+        const start = cursor
+        const end = cursor + token.length
+        cursor = end
+
         if (/^\s+$/.test(token)) {
-          parts.push({ kind: 'space', text: token })
+          parts.push({ kind: 'space', text: token, start, end })
           continue
         }
 
-        parts.push({ kind: 'word', index: wordIndex, text: token })
+        parts.push({ kind: 'word', index: wordIndex, text: token, start, end })
         wordIndex += 1
       }
 
-      return parts
+      return {
+        text: paragraph,
+        parts,
+      }
     })
 })
 
@@ -98,7 +130,7 @@ const translationMap = computed(() => new Map(translations.value.map((item) => [
 
 const wordLookup = computed(() => {
   const entries = parsedParagraphs.value
-    .flatMap((paragraph) => paragraph)
+    .flatMap((paragraph) => paragraph.parts)
     .filter((part): part is Extract<ReaderPart, { kind: 'word' }> => part.kind === 'word')
     .map((word) => [word.index, word.text] as const)
 
@@ -152,16 +184,6 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.removeEventListener('mouseup', finalizeSelection)
   window.removeEventListener('resize', handleViewportChange)
-})
-
-watch(parsedParagraphs, async () => {
-  await paginateReader()
-})
-
-watch(viewMode, async (mode) => {
-  if (mode === 'reader') {
-    await paginateReader()
-  }
 })
 
 watch(currentPageTranslationGroups, async (groups) => {
@@ -410,6 +432,17 @@ function resetReaderState() {
   translations.value = []
   translationError.value = ''
   translating.value = false
+  resetPreparedParagraphCache()
+}
+
+function resetPreparedParagraphCache() {
+  preparedParagraphsCache = []
+  preparedDocumentID = null
+  preparedLayoutCacheKey = ''
+}
+
+function normalizeDocumentText(content: string) {
+  return content.replace(/\r\n?/g, '\n')
 }
 
 function normalizeRange(start: number, end: number): SelectionRange {
@@ -554,43 +587,163 @@ async function paginateReader() {
 
   await nextTick()
 
-  const measurer = readerMeasureRef.value
-  if (!measurer || measurer.clientHeight === 0) {
+  await document.fonts?.ready
+
+  const reader = readerRef.value
+  if (!reader) {
     return
   }
 
+  const layoutMetrics = getReaderLayoutMetrics(reader)
+  if (!layoutMetrics) {
+    return
+  }
+
+  const preparedParagraphs = ensurePreparedParagraphs(layoutMetrics)
+  const pages = buildReaderPages(preparedParagraphs, layoutMetrics)
+
+  readerPages.value = pages
+  currentPageIndex.value = Math.min(currentPageIndex.value, Math.max(pages.length - 1, 0))
+}
+
+function getReaderLayoutMetrics(reader: HTMLElement): ReaderLayoutMetrics | null {
+  const width = reader.clientWidth
+  const height = reader.clientHeight
+  if (width === 0 || height === 0) {
+    return null
+  }
+
+  const style = window.getComputedStyle(reader)
+  const fontSize = parsePixelValue(style.fontSize)
+  if (fontSize === 0) {
+    return null
+  }
+
+  const lineHeight = parsePixelValue(style.lineHeight) || fontSize * 1.2
+  const letterSpacing = parseLetterSpacing(style.letterSpacing)
+  const paragraphSpacing = getParagraphSpacing(reader)
+  const font = [style.fontStyle, style.fontVariant, style.fontWeight, style.fontSize, style.fontFamily].join(' ')
+
+  return {
+    font,
+    letterSpacing,
+    lineHeight,
+    paragraphSpacing,
+    width,
+    height,
+    cacheKey: `${font}|${letterSpacing}`,
+  }
+}
+
+function parsePixelValue(value: string) {
+  const nextValue = Number.parseFloat(value)
+  return Number.isFinite(nextValue) ? nextValue : 0
+}
+
+function parseLetterSpacing(value: string) {
+  if (value === 'normal') {
+    return 0
+  }
+
+  return parsePixelValue(value)
+}
+
+function getParagraphSpacing(reader: HTMLElement) {
+  const existingParagraph = reader.querySelector('.reader-paragraph')
+  if (existingParagraph instanceof HTMLElement) {
+    return parsePixelValue(window.getComputedStyle(existingParagraph).marginBottom)
+  }
+
+  const probe = document.createElement('p')
+  probe.className = 'reader-paragraph'
+  probe.textContent = ' '
+  probe.style.position = 'absolute'
+  probe.style.visibility = 'hidden'
+  probe.style.pointerEvents = 'none'
+  reader.appendChild(probe)
+
+  const paragraphSpacing = parsePixelValue(window.getComputedStyle(probe).marginBottom)
+  probe.remove()
+  return paragraphSpacing
+}
+
+function ensurePreparedParagraphs(layoutMetrics: ReaderLayoutMetrics) {
+  const documentID = activeDocument.value?.id ?? null
+  if (documentID === null) {
+    return [] as PreparedParagraph[]
+  }
+
+  if (preparedDocumentID === documentID && preparedLayoutCacheKey === layoutMetrics.cacheKey) {
+    return preparedParagraphsCache
+  }
+
+  const prepareOptions = layoutMetrics.letterSpacing === 0
+    ? { whiteSpace: 'pre-wrap' as const }
+    : { whiteSpace: 'pre-wrap' as const, letterSpacing: layoutMetrics.letterSpacing }
+
+  preparedParagraphsCache = parsedParagraphs.value.map((paragraph) => ({
+    ...paragraph,
+    prepared: prepareWithSegments(paragraph.text, layoutMetrics.font, prepareOptions),
+  }))
+  preparedDocumentID = documentID
+  preparedLayoutCacheKey = layoutMetrics.cacheKey
+  return preparedParagraphsCache
+}
+
+function buildReaderPages(paragraphs: PreparedParagraph[], layoutMetrics: ReaderLayoutMetrics) {
   const pages: ReaderPart[][][] = []
   let currentPage: ReaderPart[][] = []
+  let remainingHeight = layoutMetrics.height
 
-  for (const paragraph of parsedParagraphs.value) {
-    let paragraphSlice: ReaderPart[] = []
-
-    for (const part of paragraph) {
-      if (paragraphSlice.length === 0 && part.kind === 'space') {
-        continue
-      }
-
-      const candidateParagraph = [...paragraphSlice, part]
-      const candidatePage = [...currentPage, candidateParagraph]
-
-      if (pageFits(measurer, candidatePage)) {
-        paragraphSlice = candidateParagraph
-        continue
-      }
-
-      if (paragraphSlice.length === 0) {
-        paragraphSlice = [part]
-        continue
-      }
-
-      currentPage.push(trimTrailingSpaces(paragraphSlice))
-      pages.push(currentPage)
-      currentPage = []
-      paragraphSlice = part.kind === 'space' ? [] : [part]
+  for (const paragraph of paragraphs) {
+    const lineRanges = getParagraphLineRanges(paragraph, layoutMetrics.width)
+    if (lineRanges.length === 0) {
+      continue
     }
 
-    if (paragraphSlice.length > 0) {
-      currentPage.push(trimTrailingSpaces(paragraphSlice))
+    let lineStartIndex = 0
+    while (lineStartIndex < lineRanges.length) {
+      let lineEndIndex = lineStartIndex
+
+      while (lineEndIndex < lineRanges.length) {
+        const nextLineCount = lineEndIndex - lineStartIndex + 1
+        const fragmentHeight = nextLineCount * layoutMetrics.lineHeight + layoutMetrics.paragraphSpacing
+        if (fragmentHeight > remainingHeight) {
+          break
+        }
+
+        lineEndIndex += 1
+      }
+
+      if (lineEndIndex === lineStartIndex) {
+        if (currentPage.length > 0) {
+          pages.push(currentPage)
+          currentPage = []
+          remainingHeight = layoutMetrics.height
+          continue
+        }
+
+        lineEndIndex = lineStartIndex + 1
+      }
+
+      const fragment = sliceParagraphParts(
+        paragraph.parts,
+        lineRanges[lineStartIndex].start,
+        lineRanges[lineEndIndex - 1].end,
+      )
+
+      if (fragment.length > 0) {
+        currentPage.push(fragment)
+      }
+
+      remainingHeight -= (lineEndIndex - lineStartIndex) * layoutMetrics.lineHeight + layoutMetrics.paragraphSpacing
+      lineStartIndex = lineEndIndex
+
+      if (lineStartIndex < lineRanges.length) {
+        pages.push(currentPage)
+        currentPage = []
+        remainingHeight = layoutMetrics.height
+      }
     }
   }
 
@@ -598,41 +751,97 @@ async function paginateReader() {
     pages.push(currentPage)
   }
 
-  readerPages.value = pages
-  currentPageIndex.value = Math.min(currentPageIndex.value, Math.max(pages.length - 1, 0))
+  return pages
 }
 
-function pageFits(measurer: HTMLElement, page: ReaderPart[][]) {
-  renderMeasurePage(measurer, page)
-  return measurer.scrollHeight <= measurer.clientHeight
-}
+function getParagraphLineRanges(paragraph: PreparedParagraph, width: number) {
+  const lineRanges: Array<{ start: number; end: number }> = []
+  let cursor: LayoutCursor = { segmentIndex: 0, graphemeIndex: 0 }
+  let sourceOffset = 0
 
-function renderMeasurePage(measurer: HTMLElement, page: ReaderPart[][]) {
-  measurer.replaceChildren()
-
-  for (const paragraph of page) {
-    const paragraphNode = document.createElement('p')
-    paragraphNode.className = 'reader-paragraph'
-
-    for (const part of paragraph) {
-      const span = document.createElement('span')
-      span.className = part.kind
-      span.textContent = part.text
-      paragraphNode.appendChild(span)
+  while (true) {
+    const line = layoutNextLine(paragraph.prepared, cursor, width)
+    if (!line) {
+      break
     }
 
-    measurer.appendChild(paragraphNode)
+    const lineRange = consumeRenderedLineRange(paragraph.text, line.text, sourceOffset)
+    if (!lineRange) {
+      return [{ start: 0, end: paragraph.text.length }]
+    }
+
+    lineRanges.push(lineRange)
+    cursor = line.end
+    sourceOffset = lineRange.end
   }
+
+  return lineRanges.length > 0 ? lineRanges : [{ start: 0, end: paragraph.text.length }]
 }
 
-function trimTrailingSpaces(parts: ReaderPart[]) {
-  const nextParts = [...parts]
+function consumeRenderedLineRange(sourceText: string, renderedText: string, start: number) {
+  let sourceIndex = start
+  let renderedIndex = 0
 
-  while (nextParts.length > 0 && nextParts[nextParts.length - 1].kind === 'space') {
-    nextParts.pop()
+  while (sourceIndex < sourceText.length && renderedIndex < renderedText.length) {
+    if (sourceText[sourceIndex] === '\n') {
+      sourceIndex += 1
+      continue
+    }
+
+    if (sourceText[sourceIndex] !== renderedText[renderedIndex]) {
+      return null
+    }
+
+    sourceIndex += 1
+    renderedIndex += 1
   }
 
-  return nextParts
+  if (renderedIndex !== renderedText.length) {
+    return null
+  }
+
+  while (sourceIndex < sourceText.length && sourceText[sourceIndex] === '\n') {
+    sourceIndex += 1
+  }
+
+  return { start, end: sourceIndex }
+}
+
+function sliceParagraphParts(parts: ReaderPart[], start: number, end: number) {
+  const fragment: ReaderPart[] = []
+
+  for (const part of parts) {
+    const sliceStart = Math.max(start, part.start)
+    const sliceEnd = Math.min(end, part.end)
+    if (sliceStart >= sliceEnd) {
+      continue
+    }
+
+    const text = part.text.slice(sliceStart - part.start, sliceEnd - part.start)
+    if (!text) {
+      continue
+    }
+
+    if (part.kind === 'word') {
+      fragment.push({
+        kind: 'word',
+        index: part.index,
+        text,
+        start: sliceStart,
+        end: sliceEnd,
+      })
+      continue
+    }
+
+    fragment.push({
+      kind: 'space',
+      text,
+      start: sliceStart,
+      end: sliceEnd,
+    })
+  }
+
+  return fragment
 }
 </script>
 
@@ -672,11 +881,11 @@ function trimTrailingSpaces(parts: ReaderPart[]) {
 
   <main v-else class="reader-view">
     <section class="reader-surface">
-      <article class="reader" @dragstart.prevent>
+      <article ref="readerRef" class="reader" @dragstart.prevent>
         <p v-for="(segments, paragraphIndex) in currentPageSegments" :key="paragraphIndex" class="reader-paragraph">
           <template v-for="segment in segments" :key="segment.key">
             <template v-if="segment.type === 'plain'">
-              <template v-for="(part, partIndex) in segment.parts" :key="part.kind === 'word' ? part.index : `${segment.key}-${partIndex}`">
+              <template v-for="(part, partIndex) in segment.parts" :key="part.kind === 'word' ? `${part.index}:${part.start}:${part.end}` : `${segment.key}-${part.start}-${part.end}-${partIndex}`">
                 <span
                   v-if="part.kind === 'word'"
                   class="word"
@@ -694,7 +903,7 @@ function trimTrailingSpaces(parts: ReaderPart[]) {
               </template>
             </template>
             <ruby v-else class="translation-group">
-              <template v-for="(part, partIndex) in segment.parts" :key="part.kind === 'word' ? part.index : `${segment.key}-${partIndex}`">
+              <template v-for="(part, partIndex) in segment.parts" :key="part.kind === 'word' ? `${part.index}:${part.start}:${part.end}` : `${segment.key}-${part.start}-${part.end}-${partIndex}`">
                 <span
                   v-if="part.kind === 'word'"
                   class="word"
@@ -715,7 +924,6 @@ function trimTrailingSpaces(parts: ReaderPart[]) {
           </template>
         </p>
       </article>
-      <article ref="readerMeasureRef" aria-hidden="true" class="reader reader-measure"></article>
     </section>
 
     <footer class="reader-footer">
