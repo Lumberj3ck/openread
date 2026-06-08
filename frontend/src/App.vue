@@ -902,25 +902,27 @@ function sliceParagraphParts(parts: ReaderPart[], start: number, end: number) {
                 <span v-else class="space">{{ part.text }}</span>
               </template>
             </template>
-            <ruby v-else class="translation-group">
-              <template v-for="(part, partIndex) in segment.parts" :key="part.kind === 'word' ? `${part.index}:${part.start}:${part.end}` : `${segment.key}-${part.start}-${part.end}-${partIndex}`">
-                <span
-                  v-if="part.kind === 'word'"
-                  class="word"
-                  :class="{
-                    selected: isWordSelected(part.index),
-                    removable: isWordRemovable(part.index),
-                  }"
-                  @mousedown="handleWordMouseDown(part.index, $event)"
-                  @mouseenter="handleWordMouseEnter(part.index)"
-                  @mouseleave="handleWordMouseLeave(part.index)"
-                >
-                  {{ part.text }}
-                </span>
-                <span v-else class="space">{{ part.text }}</span>
-              </template>
-              <rt class="translation-inline">{{ segment.translation || ' ' }}</rt>
-            </ruby>
+            <span v-else :key="`${segment.key}:${segment.translation}`" class="translation-group">
+              <span class="translation-base">
+                <template v-for="(part, partIndex) in segment.parts" :key="part.kind === 'word' ? `${part.index}:${part.start}:${part.end}` : `${segment.key}-${part.start}-${part.end}-${partIndex}`">
+                  <span
+                    v-if="part.kind === 'word'"
+                    class="word"
+                    :class="{
+                      selected: isWordSelected(part.index),
+                      removable: isWordRemovable(part.index),
+                    }"
+                    @mousedown="handleWordMouseDown(part.index, $event)"
+                    @mouseenter="handleWordMouseEnter(part.index)"
+                    @mouseleave="handleWordMouseLeave(part.index)"
+                  >
+                    {{ part.text }}
+                  </span>
+                  <span v-else class="space">{{ part.text }}</span>
+                </template>
+              </span>
+              <span class="translation-inline">{{ segment.translation || ' ' }}</span>
+            </span>
           </template>
         </p>
       </article>

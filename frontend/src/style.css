@@ -188,15 +188,27 @@ h1 {
 }
 
 .translation-group {
-  ruby-position: under;
+  position: relative;
+  display: inline-block;
+  vertical-align: baseline;
+}
+
+.translation-base {
+  display: inline;
 }
 
 .translation-inline {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translate(-50%, -0.42em);
   font-size: 0.48em;
-  line-height: 1.15;
+  line-height: 1;
+  white-space: nowrap;
   color: rgba(76, 51, 29, 0.86);
   letter-spacing: 0.01em;
   user-select: none;
+  pointer-events: none;
 }
 
 .word {
