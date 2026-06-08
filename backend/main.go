@@ -86,9 +86,11 @@ func main() {
 		log.Fatalf("init db: %v", err)
 	}
 
+	groqAPIKey := requiredEnv("GROQ_API_KEY")
+
 	s := &server{
 		db:         db,
-		groqAPIKey: strings.TrimSpace(os.Getenv("GROQ_API_KEY")),
+		groqAPIKey: groqAPIKey,
 		groqModel:  envOrDefault("GROQ_MODEL", "llama-3.1-8b-instant"),
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
@@ -226,11 +228,6 @@ func (s *server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleTranslateSelections(w http.ResponseWriter, r *http.Request) {
-	if s.groqAPIKey == "" {
-		writeError(w, http.StatusServiceUnavailable, "GROQ_API_KEY is not configured")
-		return
-	}
-
 	var request translationRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid translation payload")
@@ -397,4 +394,13 @@ func envOrDefault(key, fallback string) string {
 	}
 
 	return fallback
+}
+
+func requiredEnv(key string) string {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		log.Fatalf("missing required environment variable %s", key)
+	}
+
+	return value
 }
