@@ -29,6 +29,21 @@ button {
   height: 100vh;
 }
 
+.app-loading {
+  height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+  background: #f3efe8;
+}
+
+.app-loading-mark {
+  color: #6e655b;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.76rem;
+}
+
 .library-view {
   height: 100vh;
   display: grid;

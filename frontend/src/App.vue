@@ -52,6 +52,14 @@ type AppRoute =
   | { name: 'library' }
   | { name: 'document'; id: number }
 
+type ReaderPreferences = {
+  sidebarOpen: boolean
+  fontID: string
+  fontScale: number
+  columnWidth: number
+  highlightID: string
+}
+
 type TranslationItem = {
   key: string
   text: string
@@ -150,10 +158,13 @@ const minReaderColumnWidth = 760
 const maxReaderColumnWidth = 1320
 const readerColumnWidthStep = 80
 const libraryRouteHash = '#/'
+const readerPreferencesStorageKey = 'openread:reader-preferences'
+const initialReaderPreferences = loadReaderPreferences()
 
 const documents = ref<DocumentSummary[]>([])
 const activeDocument = ref<DocumentRecord | null>(null)
 const viewMode = ref<ViewMode>('library')
+const appReady = ref(false)
 const currentPageIndex = ref(0)
 const readerPages = ref<ReaderParagraph[][]>([])
 const loading = ref(false)
@@ -165,11 +176,11 @@ const hoveredWordIndex = ref<number | null>(null)
 const selectionStartIndex = ref<number | null>(null)
 const selectionEndIndex = ref<number | null>(null)
 const isSelecting = ref(false)
-const readerSidebarOpen = ref(false)
-const readerFontID = ref(readerFontOptions[0].id)
-const readerFontScale = ref(1)
-const readerColumnWidth = ref(1100)
-const readerHighlightID = ref(highlightOptions[0].id)
+const readerSidebarOpen = ref(initialReaderPreferences.sidebarOpen)
+const readerFontID = ref(initialReaderPreferences.fontID)
+const readerFontScale = ref(initialReaderPreferences.fontScale)
+const readerColumnWidth = ref(initialReaderPreferences.columnWidth)
+const readerHighlightID = ref(initialReaderPreferences.highlightID)
 const readerRef = ref<HTMLElement | null>(null)
 const translations = ref<TranslationItem[]>([])
 const translationError = ref('')
@@ -297,8 +308,17 @@ onMounted(async () => {
   window.addEventListener('mouseup', finalizeSelection)
   window.addEventListener('resize', handleViewportChange)
   window.addEventListener('hashchange', handleRouteChange)
-  await loadDocuments()
-  await syncViewWithRoute()
+
+  try {
+    await syncViewWithRoute()
+    await loadDocuments()
+  } finally {
+    appReady.value = true
+
+    if (viewMode.value === 'reader' && activeDocument.value) {
+      await paginateReader()
+    }
+  }
 })
 
 onBeforeUnmount(() => {
@@ -317,6 +337,16 @@ watch([readerSidebarOpen, readerFontID, readerFontScale, readerColumnWidth], asy
   }
 
   await paginateReader()
+})
+
+watch([readerSidebarOpen, readerFontID, readerFontScale, readerColumnWidth, readerHighlightID], () => {
+  saveReaderPreferences({
+    sidebarOpen: readerSidebarOpen.value,
+    fontID: readerFontID.value,
+    fontScale: readerFontScale.value,
+    columnWidth: readerColumnWidth.value,
+    highlightID: readerHighlightID.value,
+  })
 })
 
 async function loadDocuments() {
@@ -661,6 +691,54 @@ function resetPreparedParagraphCache() {
   preparedLayoutCacheKey = ''
   preparedParagraphLineRanges = []
   preparedParagraphLineRangesWidth = 0
+}
+
+function loadReaderPreferences(): ReaderPreferences {
+  const fallbackPreferences: ReaderPreferences = {
+    sidebarOpen: false,
+    fontID: readerFontOptions[0].id,
+    fontScale: 1,
+    columnWidth: 1100,
+    highlightID: highlightOptions[0].id,
+  }
+
+  if (typeof window === 'undefined') {
+    return fallbackPreferences
+  }
+
+  try {
+    const rawPreferences = window.localStorage.getItem(readerPreferencesStorageKey)
+    if (!rawPreferences) {
+      return fallbackPreferences
+    }
+
+    const parsedPreferences = JSON.parse(rawPreferences) as Partial<ReaderPreferences>
+    return {
+      sidebarOpen: parsedPreferences.sidebarOpen === true,
+      fontID: isReaderFontID(parsedPreferences.fontID) ? parsedPreferences.fontID : fallbackPreferences.fontID,
+      fontScale: clampReaderFontScale(typeof parsedPreferences.fontScale === 'number' ? parsedPreferences.fontScale : fallbackPreferences.fontScale),
+      columnWidth: clampReaderColumnWidth(typeof parsedPreferences.columnWidth === 'number' ? parsedPreferences.columnWidth : fallbackPreferences.columnWidth),
+      highlightID: isHighlightOptionID(parsedPreferences.highlightID) ? parsedPreferences.highlightID : fallbackPreferences.highlightID,
+    }
+  } catch {
+    return fallbackPreferences
+  }
+}
+
+function saveReaderPreferences(preferences: ReaderPreferences) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.setItem(readerPreferencesStorageKey, JSON.stringify(preferences))
+}
+
+function isReaderFontID(value: unknown): value is ReaderFontOption['id'] {
+  return typeof value === 'string' && readerFontOptions.some((option) => option.id === value)
+}
+
+function isHighlightOptionID(value: unknown): value is HighlightOption['id'] {
+  return typeof value === 'string' && highlightOptions.some((option) => option.id === value)
 }
 
 function normalizeDocumentText(content: string) {
@@ -1202,7 +1280,11 @@ function sliceParagraphParts(parts: ReaderPart[], start: number, end: number) {
 </script>
 
 <template>
-  <main v-if="viewMode === 'library'" class="library-view">
+  <main v-if="!appReady" class="app-loading" aria-live="polite">
+    <div class="app-loading-mark">OpenRead</div>
+  </main>
+
+  <main v-else-if="viewMode === 'library'" class="library-view">
     <div class="library-shell">
       <section class="upload-stage">
         <p class="eyebrow">OpenRead</p>
