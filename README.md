@@ -1,6 +1,9 @@
+
 # OpenRead
 
 First MVP scaffold for an open reading tool inspired by Readlang.
+
+<img width="1380" height="666" alt="screenshot-2026-06-08_18-08-40" src="https://github.com/user-attachments/assets/2dc08b6b-eb18-4752-952f-8e7a51f85b47" />
 
 ## Stack
 
