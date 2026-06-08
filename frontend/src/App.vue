@@ -1032,8 +1032,7 @@ function sliceParagraphParts(parts: ReaderPart[], start: number, end: number) {
           Next page
         </button>
       </nav>
-      <p v-if="translating" class="translation-status">Translating selection...</p>
-      <p v-else-if="translationError" class="translation-status translation-error">{{ translationError }}</p>
+      <p v-if="translationError" class="translation-status translation-error">{{ translationError }}</p>
     </footer>
   </main>
 </template>
