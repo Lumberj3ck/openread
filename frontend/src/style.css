@@ -200,8 +200,12 @@ h1 {
 .translation-inline {
   position: absolute;
   top: 100%;
-  left: 50%;
-  transform: translate(-50%, -0.42em);
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8em;
+  transform: translateY(-0.42em);
   font-size: 0.48em;
   line-height: 1;
   white-space: nowrap;
@@ -209,6 +213,15 @@ h1 {
   letter-spacing: 0.01em;
   user-select: none;
   pointer-events: none;
+}
+
+.translation-inline-single {
+  justify-content: center;
+}
+
+.translation-token {
+  display: block;
+  text-align: center;
 }
 
 .word {

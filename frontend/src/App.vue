@@ -578,6 +578,14 @@ function findLastWordPartIndex(paragraph: ReaderPart[], wordIndex: number) {
   return -1
 }
 
+function splitTranslationTokens(translation: string) {
+  return translation.trim().split(/\s+/).filter(Boolean)
+}
+
+function isSingleTranslationToken(translation: string) {
+  return splitTranslationTokens(translation).length <= 1
+}
+
 async function paginateReader() {
   if (viewMode.value !== 'reader' || parsedParagraphs.value.length === 0) {
     readerPages.value = parsedParagraphs.value.length === 0 ? [] : readerPages.value
@@ -921,7 +929,13 @@ function sliceParagraphParts(parts: ReaderPart[], start: number, end: number) {
                   <span v-else class="space">{{ part.text }}</span>
                 </template>
               </span>
-              <span class="translation-inline">{{ segment.translation || ' ' }}</span>
+              <span
+                v-if="segment.translation"
+                class="translation-inline"
+                :class="{ 'translation-inline-single': isSingleTranslationToken(segment.translation) }"
+              >
+                <span v-for="(token, tokenIndex) in splitTranslationTokens(segment.translation)" :key="`${segment.key}-token-${tokenIndex}`" class="translation-token">{{ token }}</span>
+              </span>
             </span>
           </template>
         </p>
